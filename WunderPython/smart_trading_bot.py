@@ -1,4 +1,3 @@
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import os, time, json, requests, pandas as pd, ta
 from datetime import datetime, UTC, timedelta
 import http.server, socketserver
@@ -10,6 +9,7 @@ import numpy as np
 from AI_MODEL.auto_ai_manager import auto_update_ai
 from AI_MODEL.market_context_ai import market_okay
 from AI_MODEL.online_learner import OnlineLearner  # ← importa antes de usar
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 # === RUTAS PERSISTENTES AUTOMÁTICAS ===
@@ -1403,5 +1403,6 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
