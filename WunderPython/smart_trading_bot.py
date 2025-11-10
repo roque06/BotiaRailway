@@ -6,11 +6,25 @@ import subprocess
 import joblib
 import math
 import numpy as np
-
-
 from AI_MODEL.auto_ai_manager import auto_update_ai
 from AI_MODEL.market_context_ai import market_okay
 from AI_MODEL.online_learner import OnlineLearner  # ← importa antes de usar
+
+
+# === RUTAS PERSISTENTES AUTOMÁTICAS ===
+# Si Railway monta /mnt/data, guardamos allí los logs y modelos.
+if os.path.exists("/mnt/data"):
+    BASE_PATH = "/mnt/data"
+else:
+    BASE_PATH = os.getcwd()
+
+LOG_CSV = os.path.join(BASE_PATH, "trades_log.csv")
+PARAMS_FILE = os.path.join(BASE_PATH, "params.json")
+STATE_FILE_TPL = os.path.join(BASE_PATH, "state_{symbol}.json")
+AI_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+
+print(f"📁 Base path activo: {BASE_PATH}", flush=True)
+
 
 # Inicia IA secundaria
 threading.Thread(target=auto_update_ai, daemon=True).start()
@@ -1388,3 +1402,4 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
