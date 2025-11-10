@@ -4,7 +4,6 @@
 
 FROM python:3.11-slim
 
-# Crear carpeta de trabajo
 WORKDIR /app
 
 # Copiar TODO el proyecto (incluye AI_MODEL y WunderPython)
@@ -20,11 +19,8 @@ RUN pip install --no-cache-dir \
     scikit-learn==1.3.2 \
     python-telegram-bot==20.7
 
-# Crear ruta persistente
 RUN mkdir -p /mnt/data
 
-# Exponer el puerto del servidor interno (/ip)
 EXPOSE 8080
 
-# Iniciar el bot
 CMD ["python", "WunderPython/smart_trading_bot.py"]
