@@ -61,7 +61,7 @@ y_init = np.array([0])  # clase neutra
 try:
     # Fittea el scaler antes de entrenar
     online_ai.scaler.fit(X_init)
-    online_ai.model.partial_fit(X_init, y_init, classes=[0, 1])
+    online_ai.clf.partial_fit(X_init, y_init, classes=[0, 1])
     print("🧩 IA online inicializada correctamente (scaler y coef_ listos).")
 except Exception as e:
     print(f"⚠️ Error inicializando IA online: {e}")
@@ -1413,6 +1413,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
