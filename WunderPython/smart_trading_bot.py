@@ -1,3 +1,4 @@
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import os, time, json, requests, pandas as pd, ta
 from datetime import datetime, UTC, timedelta
 import http.server, socketserver
@@ -1402,4 +1403,5 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
