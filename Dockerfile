@@ -28,4 +28,4 @@ RUN mkdir -p /mnt/data
 EXPOSE 8080
 
 # Comando principal
-CMD ["python", "smart_trading_bot.py"]
+CMD ["python", "WunderPython/smart_trading_bot.py"]
