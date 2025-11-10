@@ -5,19 +5,18 @@
 # Archivos temporales y logs
 *.log
 *.tmp
-*.csv
-*.txt
-*.json
 
 # Modelos entrenados (se regeneran automáticamente)
 *.pkl
 AI_MODEL/__pycache__/
 AI_MODEL/*.pkl
 
-# Carpeta de estado y datos persistentes locales
-/mnt/data/
+# Cachés y bytecode
 __pycache__/
 *.pyc
+
+# Carpeta de datos persistentes (solo en Railway)
+mnt/data/
 
 # Archivos de entorno o claves locales
 .env
@@ -34,7 +33,6 @@ Thumbs.db
 .git/
 .gitignore
 
-# Archivos que Railway no necesita
+# Archivos innecesarios
 README.md
 LICENSE
-requirements.txt  # no se usa porque instalamos directo en el Dockerfile
