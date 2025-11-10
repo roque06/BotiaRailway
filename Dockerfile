@@ -1,17 +1,16 @@
-# ======================================
-#  Dockerfile ÚNICO para BOT IA BTCUSDT
-#  (todo integrado, sin requirements.txt)
-# ======================================
+# ============================================
+#  Dockerfile completo para Railway + IA Model
+# ============================================
 
 FROM python:3.11-slim
 
 # Crear carpeta de trabajo
 WORKDIR /app
 
-# Copiar todo el código local (bot + IA_MODEL + CSVs)
-COPY . .
+# Copiar TODO el proyecto, incluyendo WunderPython y AI_MODEL
+COPY . /app/
 
-# Instalar dependencias necesarias
+# Instalar dependencias del bot
 RUN pip install --no-cache-dir \
     pandas==2.2.2 \
     numpy==1.26.4 \
@@ -21,11 +20,11 @@ RUN pip install --no-cache-dir \
     scikit-learn==1.3.2 \
     python-telegram-bot==20.7
 
-# Crear ruta persistente (si Railway asigna un volumen /mnt/data)
+# Crear ruta persistente (Railway monta /mnt/data)
 RUN mkdir -p /mnt/data
 
-# Puerto opcional del HTTP interno (para endpoint /ip)
+# Exponer el puerto del servidor interno /ip
 EXPOSE 8080
 
-# Comando principal
+# Comando de arranque
 CMD ["python", "WunderPython/smart_trading_bot.py"]
