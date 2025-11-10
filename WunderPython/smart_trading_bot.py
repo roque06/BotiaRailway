@@ -1,16 +1,25 @@
-import os, time, json, requests, pandas as pd, ta
+import sys
+import os
+import time
+import json
+import requests
+import pandas as pd
+import ta
 from datetime import datetime, UTC, timedelta
-import http.server, socketserver
+import http.server
+import socketserver
 import threading
 import subprocess
 import joblib
 import math
 import numpy as np
+
+# ✅ Corrige el path para que Python encuentre AI_MODEL/
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from AI_MODEL.auto_ai_manager import auto_update_ai
 from AI_MODEL.market_context_ai import market_okay
-from AI_MODEL.online_learner import OnlineLearner  # ← importa antes de usar
-
+from AI_MODEL.online_learner import OnlineLearner
 
 
 # === RUTAS PERSISTENTES AUTOMÁTICAS ===
@@ -1404,6 +1413,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
