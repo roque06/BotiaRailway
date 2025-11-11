@@ -68,8 +68,6 @@ except Exception as e:
     print(f"⚠️ Error inicializando IA online: {e}")
 
 
-
-
 CONTEXT_PATH = "AI_MODEL/context_state.json"
 NOW_UTC = lambda: pd.Timestamp.now(tz="UTC")
 
@@ -682,8 +680,6 @@ def send_signal(symbol: str, code: str) -> bool:
         return False
 
 
-
-
 # ==============================
 # INDICADORES
 # ==============================
@@ -937,7 +933,6 @@ def check_drawdown_limits():
         return day_limit, week_limit, profit_lock
     except Exception:
         return (False, False, False)
-
 
 
 def log_trade(
@@ -1422,9 +1417,9 @@ class UnifiedHandler(http.server.SimpleHTTPRequestHandler):
 
         # --- 2️⃣ Estado del bot (posición abierta) ---
         elif self.path == "/state":
-            state_path = "/mnt/data/state_BTCUSDT.json"
-            if os.path.exists(state_path):
-                with open(state_path, "r", encoding="utf-8") as f:
+            state_file = state_path("BTCUSDT")
+            if os.path.exists(state_file):
+                with open(state_file, "r", encoding="utf-8") as f:
                     content = f.read()
                 self.send_response(200)
                 self.end_headers()
@@ -1482,15 +1477,3 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
-
-
-
-
-
-
-
-
-
-
-
-
