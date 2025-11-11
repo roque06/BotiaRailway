@@ -1424,11 +1424,12 @@ def start_http_server():
         with socketserver.TCPServer(("", PORT), IPHandler) as httpd:
             print(f"🌐 Servidor HTTP escuchando en puerto {PORT} (/ip disponible)", flush=True)
             httpd.serve_forever()
-    except Exception as e:
-        print(f"⚠️ Error iniciando servidor HTTP: {e}", flush=True)
+    except OSError as e:
+        if "Address already in use" in str(e):
+            print(f"⚠️ Puerto {PORT} ya en uso, se omite iniciar nuevo servidor HTTP.")
+        else:
+            print(f"⚠️ Error iniciando servidor HTTP: {e}", flush=True)
 
-# Iniciar el servidor HTTP en segundo plano
-threading.Thread(target=start_http_server, daemon=True).start()
 
 if __name__ == "__main__":
     print("Binance OK, iniciando v6 ULTIMATE...", flush=True)
@@ -1444,6 +1445,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
