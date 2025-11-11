@@ -653,25 +653,34 @@ def send_signal(symbol: str, code: str) -> bool:
     state = load_state(symbol)
     now_ts = time.time()
 
-    # anti-duplicados
+    # anti-duplicados locales
     if (
         state.get("last_signal") == code
         and (now_ts - state.get("last_signal_ts", 0)) < DUP_SIGNAL_COOLDOWN_SEC
     ):
-        return False  # no se envió por cooldown
+        print(f"↩️ {symbol} señal ignorada (cooldown antidupe).")
+        return False
 
     try:
         r = requests.post(WUNDER_WEBHOOK, json={"code": code}, timeout=10)
-        print(f"[{datetime.now(UTC)}] {symbol} Signal -> {code} | status={r.status_code}", flush=True)
         ok = (200 <= r.status_code < 300)
+        print(f"[{datetime.now(UTC)}] {symbol} Signal -> {code} | status={r.status_code}", flush=True)
+
         if ok:
             state["last_signal"] = code
             state["last_signal_ts"] = now_ts
             save_state(symbol, state)
+        else:
+            # útil para depurar por qué el provider rechazó
+            try:
+                print(f"Body: {r.text[:300]}", flush=True)
+            except Exception:
+                pass
         return ok
     except Exception as e:
         print(f"⚠️ Error enviando señal {symbol}: {e}", flush=True)
         return False
+
 
 
 
@@ -1233,7 +1242,6 @@ def main():
                 vol_now     = float(df15["volume"].iloc[-1])
                 vol_ma      = float(df15["vol_ma"].iloc[-1])
 
-                # 5m / 1h
                 ema_f_5, ema_s_5   = float(df5["ema_fast"].iloc[-1]), float(df5["ema_slow"].iloc[-1])
                 rsi_5, rsi_slope_5 = float(df5["rsi"].iloc[-1]), float(df5["rsi_slope"].iloc[-1])
                 ema_f_1h, ema_s_1h = float(df1h["ema_fast"].iloc[-1]), float(df1h["ema_slow"].iloc[-1])
@@ -1271,18 +1279,14 @@ def main():
                     RSI_LONG_MAX = max(60, RSI_LONG_MAX - 2)
                     ADX_MIN      = min(35, ADX_MIN + 2)
 
-                # Límites de seguridad básicos
+                # Límites de seguridad
                 day_limit, week_limit, profit_lock = check_drawdown_limits()
-                # if day_limit or week_limit:
-                #     send_telegram_message(f"⚠️ {SYMBOL} Drawdown límite. Día={day_limit}, Semana={week_limit}."); continue
 
-                # Filtros de ruido para DEMO
-                if atr_fast > atr_stable * 2.5:  # volatilidad extrema
-                    continue
-                if adx_now < 8:                   # mercado muy apagado
+                # Filtros de ruido
+                if atr_fast > atr_stable * 2.5 or adx_now < 8:
                     continue
 
-                # =============== Señales base (setup) ===============
+                # =============== Señales base ===============
                 ema_cross_up = ema_f > ema_s * (1 + EMA_DIFF_MARGIN)
                 ema_cross_dn = ema_f < ema_s * (1 - EMA_DIFF_MARGIN)
 
@@ -1298,7 +1302,6 @@ def main():
                     and (price < ema_long) and (vol_now > vol_ma) and short_align_5m
                 )
 
-                # Relaja si la IA es muy baja
                 if ia_prob < 0.25:
                     bullish_ok = bearish_ok = False
 
@@ -1314,41 +1317,36 @@ def main():
                 score = ml_score(features, ia_prob=ia_prob)
                 if not (bullish_ok or bearish_ok) or score < ML_THRESHOLD:
                     print(f"⏸️ {SYMBOL} sin señal clara. ML={score:.2f} | regime={regime} | ia={ia_prob:.2%}")
-                    # Aun sin señal, si hay posición abierta seguimos monitoreando más abajo
-                # -----------------------------------------------------
 
-                # =============== Gestión de posición abierta (PRIMERO) ===============
-                flip_to = None  # 'LONG' o 'SHORT' si procede
+                # =============== Gestión de posición abierta ===============
+                flip_to = None
                 if state.get("last_side") and state.get("entry_price") is not None:
                     side  = state["last_side"]
                     entry = state["entry_price"]
 
-                    # 1) Gestión defensiva: BE + Trailing siempre actualizados
                     apply_breakeven_if_needed(state, side, price, SYMBOL)
                     update_trailing(state, side, price, SYMBOL)
-
-                    # 2) ¿Disparo de salida por trailing/SL o protección BE?
                     exit_now, reason = should_exit_now(state, side, price)
 
-                    # 3) ¿Reversión inteligente (flip)?
+                    # Flip inteligente
                     if not exit_now and adx_now >= FLIP_REQUIRE_ADX and ia_prob >= FLIP_MIN_IA:
                         if side == "LONG" and bearish_ok:
                             flip_to = "SHORT"
-                            reason  = "Flip: señal contraria fuerte"
+                            reason = "Flip: señal contraria fuerte"
                             exit_now = True
                         elif side == "SHORT" and bullish_ok:
                             flip_to = "LONG"
-                            reason  = "Flip: señal contraria fuerte"
+                            reason = "Flip: señal contraria fuerte"
                             exit_now = True
 
-                    # 4) Ejecutar salida si corresponde
+                    # Salida o Flip
                     if exit_now:
                         pnl_pct = current_profit_pct(side, entry, price)
                         send_signal(SYMBOL, SIGNAL_CODES[SYMBOL]["EXIT_ALL"])
-                        log_trade(SYMBOL, side, entry, price, pnl_pct, reason=reason)
-                        send_telegram_message(f"🔚 {SYMBOL} EXIT por {reason}\n{side} @ {entry:.2f} → {price:.2f} | PnL={pnl_pct:.2f}%")
+                        log_trade(SYMBOL, side, entry, price, pnl_pct, reason)
+                        send_telegram_message(f"🔚 {SYMBOL} EXIT {side} @ {entry:.2f} → {price:.2f} | PnL={pnl_pct:.2f}% ({reason})")
 
-                        # Limpiar estado y entrar en cooldown corto
+                        # limpiar estado
                         state.update({
                             "last_side": None,
                             "entry_price": None,
@@ -1362,65 +1360,42 @@ def main():
                         })
                         save_state(SYMBOL, state)
 
-                        # Si hay flip, intentamos entrada opuesta inmediatamente tras micro-cooldown
+                        # Flip inmediato
                         if flip_to:
                             time.sleep(FLIP_COOLDOWN_SEC)
-                            side_flip = flip_to
-                            sl_price = (price - ATR_SL_MULT * atr_fast) if side_flip == "LONG" else (price + ATR_SL_MULT * atr_fast)
-                            code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if side_flip == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
+                            sl_flip = (price - ATR_SL_MULT * atr_fast) if flip_to == "LONG" else (price + ATR_SL_MULT * atr_fast)
+                            code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if flip_to == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
                             if send_signal(SYMBOL, code):
-                                record_entry(SYMBOL, side_flip, price, sl_price, ema_f, ema_s, ema_long, rsi, atr_fast)
-                                state["last_side"]  = side_flip
-                                state["entry_price"] = price
-                                save_state(SYMBOL, state)
-                                send_telegram_message(f"🔁 {SYMBOL} FLIP → ENTER {side_flip} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}")
-                                print(f"🔁 {SYMBOL} FLIP → ENTER {side_flip} @ {price:.2f} | SL={sl_price:.2f}", flush=True)
-                        # Ya gestionamos salida/flip; pasa al siguiente símbolo
+                                record_entry(SYMBOL, flip_to, price, sl_flip, ema_f, ema_s, ema_long, rsi, atr_fast)
+                                send_telegram_message(f"🔁 {SYMBOL} FLIP → ENTER {flip_to} @ {price:.2f} | SL={sl_flip:.2f} | IA={ia_prob*100:.1f}%")
+                                print(f"🔁 {SYMBOL} FLIP → ENTER {flip_to} @ {price:.2f}", flush=True)
                         continue
 
-                # =============== Si NO hay posición abierta, evaluar ENTRADA ===============
-                state = load_state(SYMBOL)  # refrescar por si se limpió arriba
+                # =============== Entrada nueva si no hay posición ===============
+                state = load_state(SYMBOL)
                 if not state.get("last_side") or state.get("entry_price") is None:
-                    # Requisitos de señal
                     if not (bullish_ok or bearish_ok) or score < ML_THRESHOLD:
-                        # no hay setup válido; pasar al siguiente símbolo
                         time.sleep(0.01)
                         continue
 
                     desired_side = "LONG" if bullish_ok else "SHORT"
                     now_ts = time.time()
 
-                    # 1) Cooldown general
                     if state.get("cooldown_until", 0) > now_ts:
                         print(f"⏸️ {SYMBOL} en cooldown.")
                         continue
 
-                    # 2) Anti-duplicado: si por algún motivo el state quedó con last_side igual y entry_price None, limpiamos
-                    if state.get("last_side") == desired_side and state.get("entry_price") is not None:
-                        print(f"⚠️ {SYMBOL}: ya hay posición {desired_side} abierta, no enviar nueva señal.")
-                        continue
-
-                    # 3) Enviar entrada
-                    sl_price  = (price - ATR_SL_MULT * atr_fast) if desired_side == "LONG" else (price + ATR_SL_MULT * atr_fast)
+                    sl_price = (price - ATR_SL_MULT * atr_fast) if desired_side == "LONG" else (price + ATR_SL_MULT * atr_fast)
                     enter_code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if desired_side == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
 
                     if send_signal(SYMBOL, enter_code):
                         record_entry(SYMBOL, desired_side, price, sl_price, ema_f, ema_s, ema_long, rsi, atr_fast)
-                        state["last_side"]   = desired_side
-                        state["entry_price"] = price
-                        save_state(SYMBOL, state)
-
-                        send_telegram_message(
-                            f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}"
-                        )
+                        send_telegram_message(f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}")
                         print(f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}", flush=True)
                     else:
-                        print(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({desired_side}).", flush=True)
-                        send_telegram_message(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({desired_side}).")
+                        print(f"⚠️ {SYMBOL} NO se pudo enviar la señal ({desired_side}).", flush=True)
+                        send_telegram_message(f"⚠️ {SYMBOL} NO se pudo enviar la señal ({desired_side}).")
 
-                # Si llegamos aquí con posición abierta, el monitoreo continuo de BE/Trailing ya quedó activo arriba
-
-            # Espera entre ciclos
             time.sleep(POLL_SECONDS)
 
         except Exception as e:
@@ -1430,29 +1405,63 @@ def main():
             print("⚠️ Error general:", e, flush=True)
             time.sleep(15)
 
-
-class IPHandler(http.server.SimpleHTTPRequestHandler):
+# ===============================
+# 🌐 Servidor HTTP unificado
+# ===============================
+class UnifiedHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
+        # --- 1️⃣ IP pública ---
         if self.path == "/ip":
             try:
                 ip = requests.get("https://ifconfig.me", timeout=5).text.strip()
             except Exception:
-                ip = "unknown"
+                ip = os.popen("hostname -I").read().strip() or "unknown"
             self.send_response(200)
             self.end_headers()
             self.wfile.write(ip.encode("utf-8"))
+
+        # --- 2️⃣ Estado del bot (posición abierta) ---
+        elif self.path == "/state":
+            state_path = "/mnt/data/state_BTCUSDT.json"
+            if os.path.exists(state_path):
+                with open(state_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(content.encode("utf-8"))
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"No state_BTCUSDT.json yet.")
+
+        # --- 3️⃣ Log de operaciones ---
+        elif self.path == "/trades":
+            csv_path = "/mnt/data/trades_log.csv"
+            if os.path.exists(csv_path):
+                with open(csv_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(content.encode("utf-8"))
+            else:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(b"No trades_log.csv yet.")
+
+        # --- 4️⃣ Página raíz ---
         else:
             self.send_response(200)
             self.end_headers()
-            self.wfile.write("Bot running ✅".encode("utf-8"))
+            self.wfile.write(b"✅ Bot IA online - Endpoints disponibles: /ip /state /trades")
 
-
-# Lanzar el servidor HTTP en hilo paralelo (Railway lo mantiene vivo)
+# ===============================
+# 🚀 Lanzar servidor en hilo paralelo
+# ===============================
 def start_http_server():
     PORT = 8080
     try:
-        with socketserver.TCPServer(("", PORT), IPHandler) as httpd:
-            print(f"🌐 Servidor HTTP escuchando en puerto {PORT} (/ip disponible)", flush=True)
+        with socketserver.TCPServer(("", PORT), UnifiedHandler) as httpd:
+            print(f"🌐 Servidor HTTP escuchando en puerto {PORT} (/ip, /state, /trades disponibles)", flush=True)
             httpd.serve_forever()
     except OSError as e:
         if "Address already in use" in str(e):
@@ -1461,21 +1470,18 @@ def start_http_server():
             print(f"⚠️ Error iniciando servidor HTTP: {e}", flush=True)
 
 
+# ===============================
+# 🧠 Punto de entrada principal
+# ===============================
 if __name__ == "__main__":
     print("Binance OK, iniciando v6 ULTIMATE...", flush=True)
     auto_train_ai_model()
 
-    # Servidor HTTP para mostrar IP pública
-    def start_http():
-        with socketserver.TCPServer(("", 8080), IPHandler) as httpd:
-            print("🌐 Servidor HTTP escuchando en puerto 8080 (/ip disponible)")
-            httpd.serve_forever()
+    # Iniciar servidor HTTP en hilo paralelo
+    threading.Thread(target=start_http_server, daemon=True).start()
 
-    threading.Thread(target=start_http, daemon=True).start()
-
-    # Inicia el bot principal
+    # Iniciar bot principal
     main()
-
 
 
 
