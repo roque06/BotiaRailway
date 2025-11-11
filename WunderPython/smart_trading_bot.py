@@ -1221,8 +1221,8 @@ def main():
                 if state.get("last_side") and state.get("entry_price") is not None:
                     side = state["last_side"]
                     entry = state["entry_price"]
-                    apply_breakeven_if_needed(state, side, price)
-                    update_trailing(state, side, price)
+                    apply_breakeven_if_needed(state, side, price, SYMBOL)
+                    update_trailing(state, side, price, SYMBOL)
 
                     do_exit, reason = should_exit_now(state, side, price)
                     if do_exit:
@@ -1413,6 +1413,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
