@@ -620,29 +620,58 @@ def fetch_klines(symbol, interval, limit=500, retries=5, backoff=5):
     raise RuntimeError(f"⚠️ Binance no responde para {symbol} tras varios intentos.")
 
 
+def record_entry(symbol: str, side: str, price: float, sl_price: float,
+                 ema_f: float, ema_s: float, ema_long: float, rsi: float, atr_fast: float):
+    state = load_state(symbol)
+    state.update({
+        "last_side": side,
+        "entry_price": price,
+        "trail_price": None,
+        "sl_price": sl_price,
+        "breakeven_active": False,
+        "partial_taken": False,
+        "highest_price": None,
+        "lowest_price": None,
+        "dynamic_trail_pct": None,
+        "entry_snapshot": {
+            "ema_fast": ema_f,
+            "ema_slow": ema_s,
+            "ema_long": ema_long,
+            "rsi": rsi,
+            "atr": atr_fast,
+        },
+        "cooldown_until": time.time() + 10,  # pequeño cooldown para evitar dobles entradas
+    })
+    save_state(symbol, state)
+
+
 # ==============================
 # SEÑALES (WunderTrading)
 # ==============================
-def send_signal(symbol: str, code: str):
+def send_signal(symbol: str, code: str) -> bool:
     state = load_state(symbol)
     now_ts = time.time()
+
     # anti-duplicados
     if (
         state.get("last_signal") == code
         and (now_ts - state.get("last_signal_ts", 0)) < DUP_SIGNAL_COOLDOWN_SEC
     ):
-        return
+        return False  # no se envió por cooldown
+
     try:
         r = requests.post(WUNDER_WEBHOOK, json={"code": code}, timeout=10)
-        print(
-            f"[{datetime.now(UTC)}] {symbol} Signal -> {code} | status={r.status_code}",
-            flush=True,
-        )
-        state["last_signal"] = code
-        state["last_signal_ts"] = now_ts
-        save_state(symbol, state)
+        print(f"[{datetime.now(UTC)}] {symbol} Signal -> {code} | status={r.status_code}", flush=True)
+        ok = (200 <= r.status_code < 300)
+        if ok:
+            state["last_signal"] = code
+            state["last_signal_ts"] = now_ts
+            save_state(symbol, state)
+        return ok
     except Exception as e:
         print(f"⚠️ Error enviando señal {symbol}: {e}", flush=True)
+        return False
+
 
 
 # ==============================
@@ -1279,14 +1308,15 @@ def main():
 
                 # === Drawdown y seguridad ===
                 day_limit, week_limit, profit_lock = check_drawdown_limits()
-                #if day_limit or week_limit:
-                    #send_telegram_message(f"⚠️ {SYMBOL} Drawdown límite. Día={day_limit}, Semana={week_limit}.")
-                    #continue
+                # if day_limit or week_limit:
+                #     send_telegram_message(f"⚠️ {SYMBOL} Drawdown límite. Día={day_limit}, Semana={week_limit}.")
+                #     continue
 
                 # === Filtros DEMO (relajados para probar) ===
-                # if atr_p90 is not None and atr_fast > atr_p90: continue
-                if atr_fast > atr_stable * 2.5: continue
-                if adx_now < 8: continue
+                if atr_fast > atr_stable * 2.5:
+                    continue
+                if adx_now < 8:
+                    continue
 
                 # === Señales ===
                 ema_cross_up_now = ema_f > ema_s * (1 + EMA_DIFF_MARGIN)
@@ -1312,8 +1342,8 @@ def main():
                 )
 
                 # === Relaja IA/Sentimiento para DEMO ===
-                # (para operar más)
-                if ia_prob < 0.25: bullish_ok = bearish_ok = False
+                if ia_prob < 0.25:
+                    bullish_ok = bearish_ok = False
 
                 features = {
                     "rsi": rsi,
@@ -1328,7 +1358,7 @@ def main():
                     print(f"⏸️ {SYMBOL} sin señal clara. ML={score:.2f} | regime={regime} | ia={ia_prob:.2%}")
                     continue
 
-                # === NUEVA ENTRADA ===
+                # === NUEVA ENTRADA (actualizado) ===
                 side = "LONG" if bullish_ok else "SHORT"
                 now_ts = time.time()
 
@@ -1336,42 +1366,27 @@ def main():
                     print(f"⏸️ {SYMBOL} en cooldown.")
                     continue
 
-                if side == "LONG":
-                    send_signal(SYMBOL, SIGNAL_CODES[SYMBOL]["ENTER_LONG"])
+                sl_price = (price - ATR_SL_MULT * atr_fast) if side == "LONG" else (price + ATR_SL_MULT * atr_fast)
+                enter_code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if side == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
+
+                if send_signal(SYMBOL, enter_code):
+                    record_entry(
+                        SYMBOL, side, price, sl_price,
+                        ema_f, ema_s, ema_long, rsi, atr_fast
+                    )
+                    send_telegram_message(
+                        f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | "
+                        f"IA={ia_prob*100:.1f}% | Regime={regime}"
+                    )
+                    print(
+                        f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | "
+                        f"IA={ia_prob*100:.1f}% | Regime={regime}",
+                        flush=True,
+                    )
                 else:
-                    send_signal(SYMBOL, SIGNAL_CODES[SYMBOL]["ENTER_SHORT"])
+                    print(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({side}).", flush=True)
+                    send_telegram_message(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({side}).")
 
-                # === Estado inicial ===
-                state.update({
-                    "last_side": side,
-                    "entry_price": price,
-                    "trail_price": None,
-                    "sl_price": price - ATR_SL_MULT * atr_fast if side == "LONG" else price + ATR_SL_MULT * atr_fast,
-                    "breakeven_active": False,
-                    "partial_taken": False,
-                    "highest_price": None,
-                    "lowest_price": None,
-                    "dynamic_trail_pct": None,
-                    "entry_snapshot": {
-                        "ema_fast": ema_f,
-                        "ema_slow": ema_s,
-                        "ema_long": ema_long,
-                        "rsi": rsi,
-                        "atr": atr_fast,
-                    },
-                    "cooldown_until": now_ts + 10,
-                })
-                save_state(SYMBOL, state)
-
-                send_telegram_message(
-                    f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={state['sl_price']:.2f} | "
-                    f"ADX={adx_now:.1f} | IA={ia_prob:.0%} | Regime={regime}"
-                )
-                print(
-                    f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={state['sl_price']:.2f} | "
-                    f"ADX={adx_now:.1f} | IA={ia_prob:.0%} | Regime={regime}",
-                    flush=True,
-                )
                 continue
 
             time.sleep(POLL_SECONDS)
@@ -1382,21 +1397,6 @@ def main():
                 send_telegram_message(f"⚠️ Error repetido de datos ({consecutive_fetch_errors}): {e}")
             print("⚠️ Error general:", e, flush=True)
             time.sleep(15)
-
-class IPHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/ip":
-            try:
-                ip = requests.get("https://ifconfig.me", timeout=5).text.strip()
-            except Exception:
-                ip = "unknown"
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(ip.encode())
-        else:
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write("Bot running ✅".encode("utf-8"))
 
 
 if __name__ == "__main__":
@@ -1413,6 +1413,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
