@@ -1452,7 +1452,7 @@ class UnifiedHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_response(200)
             self.end_headers()
-            self.wfile.write(b"✅ Bot IA online - Endpoints disponibles: /ip /state /trades")
+            self.wfile.write("✅ Bot IA online - Endpoints disponibles: /ip /state /trades".encode("utf-8"))
 
 # ===============================
 # 🚀 Lanzar servidor en hilo paralelo
@@ -1482,6 +1482,7 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
 
