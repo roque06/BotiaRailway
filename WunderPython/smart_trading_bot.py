@@ -423,9 +423,9 @@ ENABLE_PARTIALS = True
 # ==============================
 SIGNAL_CODES = {
     "BTCUSDT": {
-        "ENTER_LONG": "ENTER-LONG_Binance_BTCUSDT_BTC-BOT_5M_d99ea7958787b1d1fa0e0978",
-        "ENTER_SHORT": "ENTER-SHORT_Binance_BTCUSDT_BTC-BOT_5M_d99ea7958787b1d1fa0e0978",
-        "EXIT_ALL": "EXIT-ALL_Binance_BTCUSDT_BTC-BOT_5M_d99ea7958787b1d1fa0e0978",
+        "ENTER_LONG": "ENTER-LONG_Binance_BTCUSDT_BOT-BTC_5M_d99fa795a087b1d1fa830920",
+        "ENTER_SHORT": "ENTER-SHORT_Binance_BTCUSDT_BOT-BTC_5M_d99fa795a087b1d1fa830920",
+        "EXIT_ALL": "EXIT-ALL_Binance_BTCUSDT_BOT-BTC_5M_d99fa795a087b1d1fa830920",
         # "TAKE_PROFIT_PARTIAL": "TP-PARTIAL_Binance_BTCUSDT_BTC-BOT_15M_xxx"
     }
 }
@@ -1413,6 +1413,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
