@@ -14,6 +14,7 @@ import joblib
 import math
 import numpy as np
 
+
 # ✅ Corrige el path para que Python encuentre AI_MODEL/
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -1399,6 +1400,36 @@ def main():
             time.sleep(15)
 
 
+
+class IPHandler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/ip":
+            try:
+                ip = requests.get("https://ifconfig.me", timeout=5).text.strip()
+            except Exception:
+                ip = "unknown"
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(ip.encode("utf-8"))
+        else:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write("Bot running ✅".encode("utf-8"))
+
+
+# Lanzar el servidor HTTP en hilo paralelo (Railway lo mantiene vivo)
+def start_http_server():
+    PORT = 8080
+    try:
+        with socketserver.TCPServer(("", PORT), IPHandler) as httpd:
+            print(f"🌐 Servidor HTTP escuchando en puerto {PORT} (/ip disponible)", flush=True)
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"⚠️ Error iniciando servidor HTTP: {e}", flush=True)
+
+# Iniciar el servidor HTTP en segundo plano
+threading.Thread(target=start_http_server, daemon=True).start()
+
 if __name__ == "__main__":
     print("Binance OK, iniciando v6 ULTIMATE...", flush=True)
     auto_train_ai_model()
@@ -1413,6 +1444,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
