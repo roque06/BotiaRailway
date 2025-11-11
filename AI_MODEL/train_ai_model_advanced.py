@@ -68,7 +68,7 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 acc = accuracy_score(y_test, y_pred)
 print(f"✅ Precisión del modelo avanzado: {acc:.2%}")
-print(classification_report(y_test, y_pred))
+print(classification_report(y_test, y_pred, zero_division=0))
 
 # ============================
 # 7️⃣ GUARDAR MODELO
@@ -76,3 +76,4 @@ print(classification_report(y_test, y_pred))
 os.makedirs("AI_MODEL", exist_ok=True)
 joblib.dump(model, "AI_MODEL/model_trading.pkl")
 print("💾 Modelo avanzado guardado en: AI_MODEL/model_trading.pkl")
+
