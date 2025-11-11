@@ -1189,17 +1189,17 @@ def maybe_run_weekly_autoopt(symbol: str, state: dict):
 
 
 def main():
-    print(
-        "🚀 Bot v6 ULTIMATE: multiTF + ML-lite + DD + riesgo adaptativo + IA Copiloto + On-line + Auto-tuning.",
-        flush=True,
-    )
+    print("🚀 Bot v6 ULTIMATE: multiTF + ML-lite + DD + riesgo adaptativo + IA Copiloto + On-line + Auto-tuning.", flush=True)
     auto_retrain_ai(interval_hours=6)
     print("🧠 Aprendizaje continuo activado cada 6 horas.")
     test_telegram()
-    send_telegram_message(
-        "🤖 v6 ULTIMATE con IA Copiloto + On-line activo (15m/5m/1h)."
-    )
+    send_telegram_message("🤖 v6 ULTIMATE con IA Copiloto + On-line activo (15m/5m/1h).")
     maybe_reload_params()
+
+    # --- Parámetros de control de reversión (flip) ---
+    FLIP_MIN_IA = 0.70           # IA mínima para permitir flip
+    FLIP_REQUIRE_ADX = 18        # fuerza mínima para flip
+    FLIP_COOLDOWN_SEC = 5        # micro-pausa entre EXIT y ENTER opuesto
 
     consecutive_fetch_errors = 0
 
@@ -1214,55 +1214,141 @@ def main():
 
                 now_utc = datetime.now(UTC)
 
-                # === DATOS MULTITF ===
+                # =============== DATOS MULTI-TF ===============
                 df15 = compute_indicators(fetch_klines(SYMBOL, INTERVAL, 900))
-                df5 = compute_indicators(fetch_klines(SYMBOL, CONFIRM_INTERVAL, 900))
+                df5  = compute_indicators(fetch_klines(SYMBOL, CONFIRM_INTERVAL, 900))
                 df1h = compute_indicators(fetch_klines(SYMBOL, CONFIRM_INTERVAL_MACRO, 900))
                 consecutive_fetch_errors = 0
 
-                # === Indicadores ===
-                price = float(df15["close"].iloc[-1])
-                ema_f, ema_s = float(df15["ema_fast"].iloc[-1]), float(df15["ema_slow"].iloc[-1])
-                ema_long = float(df15["ema_long"].iloc[-1])
-                rsi = float(df15["rsi"].iloc[-1])
-                rsi_slope_now = float(df15["rsi_slope"].iloc[-1])
-                adx_now = float(df15["adx"].iloc[-1])
-                atr_fast = float(df15["atr"].iloc[-1])
-                atr_stable = float(df15["atr_ma"].iloc[-1])
-                atr_p90_val = df15["atr_p90"].iloc[-1]
-                atr_p90 = float(atr_p90_val) if not pd.isna(atr_p90_val) else None
-                vol_now = float(df15["volume"].iloc[-1])
-                vol_ma = float(df15["vol_ma"].iloc[-1])
+                # =============== Indicadores ===============
+                price       = float(df15["close"].iloc[-1])
+                ema_f       = float(df15["ema_fast"].iloc[-1])
+                ema_s       = float(df15["ema_slow"].iloc[-1])
+                ema_long    = float(df15["ema_long"].iloc[-1])
+                rsi         = float(df15["rsi"].iloc[-1])
+                rsi_slope   = float(df15["rsi_slope"].iloc[-1])
+                adx_now     = float(df15["adx"].iloc[-1])
+                atr_fast    = float(df15["atr"].iloc[-1])
+                atr_stable  = float(df15["atr_ma"].iloc[-1])
+                vol_now     = float(df15["volume"].iloc[-1])
+                vol_ma      = float(df15["vol_ma"].iloc[-1])
 
-                # === 5m y 1h ===
-                ema_f_5, ema_s_5 = float(df5["ema_fast"].iloc[-1]), float(df5["ema_slow"].iloc[-1])
+                # 5m / 1h
+                ema_f_5, ema_s_5   = float(df5["ema_fast"].iloc[-1]), float(df5["ema_slow"].iloc[-1])
                 rsi_5, rsi_slope_5 = float(df5["rsi"].iloc[-1]), float(df5["rsi_slope"].iloc[-1])
                 ema_f_1h, ema_s_1h = float(df1h["ema_fast"].iloc[-1]), float(df1h["ema_slow"].iloc[-1])
-                adx_1h = float(df1h["adx"].iloc[-1])
-                macro_ok = (ema_f_1h > ema_s_1h) and (adx_1h >= 20)
+                adx_1h             = float(df1h["adx"].iloc[-1])
 
-                # === Régimen + auto-tuning ===
+                # =============== Régimen + auto-tuning ===============
                 regime = detect_regime(df15)
                 state["regime"] = regime
                 save_state(SYMBOL, state)
                 auto_tune_by_regime(regime)
 
-                # === GESTIÓN DE POSICIÓN ABIERTA ===
+                # =============== IA y contexto ===============
+                sentiment = estimate_sentiment_from_1h(df1h)
+                context_bias = float(context.get("sentiment_bias", 0.5))
+                print(f"⏱️ {now_utc} | {SYMBOL} | P={price:.2f} | RSI={rsi:.1f}/{rsi_5:.1f} | ADX={adx_now:.1f} | regime={regime} | sentiment={sentiment:.2f} | bias_mem={context_bias:.2f}", flush=True)
+
+                ia_prob = ia_decision(
+                    ema_f, ema_s, ema_long, rsi, atr_fast,
+                    rsi_slope_now=rsi_slope,
+                    atr_stable=atr_stable,
+                    vol_now=vol_now, vol_ma=vol_ma,
+                    ema_fast_ref=ema_f, ema_slow_ref=ema_s,
+                )
+                print(f"🧩 IA → probabilidad de éxito: {ia_prob:.2%}")
+                print(f"🤖 warmed={online_ai.is_warmed} | modelo={'OK' if ia_model else 'None'}")
+
+                # Copiloto IA: micro-ajustes de filtros
+                global RSI_LONG_MIN, RSI_LONG_MAX, RSI_SHORT_MIN, RSI_SHORT_MAX, ADX_MIN, RISK_PCT_BASE
+                if ia_prob > 0.75:
+                    RSI_LONG_MIN = max(30, RSI_LONG_MIN - 2)
+                    RSI_LONG_MAX = min(80, RSI_LONG_MAX + 2)
+                    ADX_MIN      = max(8, ADX_MIN - 1)
+                elif ia_prob < 0.20:
+                    RSI_LONG_MIN = min(45, RSI_LONG_MIN + 2)
+                    RSI_LONG_MAX = max(60, RSI_LONG_MAX - 2)
+                    ADX_MIN      = min(35, ADX_MIN + 2)
+
+                # Límites de seguridad básicos
+                day_limit, week_limit, profit_lock = check_drawdown_limits()
+                # if day_limit or week_limit:
+                #     send_telegram_message(f"⚠️ {SYMBOL} Drawdown límite. Día={day_limit}, Semana={week_limit}."); continue
+
+                # Filtros de ruido para DEMO
+                if atr_fast > atr_stable * 2.5:  # volatilidad extrema
+                    continue
+                if adx_now < 8:                   # mercado muy apagado
+                    continue
+
+                # =============== Señales base (setup) ===============
+                ema_cross_up = ema_f > ema_s * (1 + EMA_DIFF_MARGIN)
+                ema_cross_dn = ema_f < ema_s * (1 - EMA_DIFF_MARGIN)
+
+                long_align_5m  = (ema_f_5 > ema_s_5) and (rsi_slope_5 > 0) and (rsi_5 >= 40)
+                short_align_5m = (ema_f_5 < ema_s_5) and (rsi_slope_5 < 0) and (rsi_5 <= 60)
+
+                bullish_ok = (
+                    ema_cross_up and (RSI_LONG_MIN <= rsi <= RSI_LONG_MAX) and (rsi_slope > 0)
+                    and (price > ema_long) and (vol_now > vol_ma) and long_align_5m
+                )
+                bearish_ok = (
+                    ema_cross_dn and (RSI_SHORT_MIN <= rsi <= RSI_SHORT_MAX) and (rsi_slope < 0)
+                    and (price < ema_long) and (vol_now > vol_ma) and short_align_5m
+                )
+
+                # Relaja si la IA es muy baja
+                if ia_prob < 0.25:
+                    bullish_ok = bearish_ok = False
+
+                # Puntuación ML-lite
+                features = {
+                    "rsi": rsi,
+                    "rsi_slope": rsi_slope,
+                    "adx": adx_now,
+                    "ema_trend": ema_f > ema_s,
+                    "vol_rel": (vol_now / max(vol_ma, 1e-9)) - 1.0,
+                    "regime": regime,
+                }
+                score = ml_score(features, ia_prob=ia_prob)
+                if not (bullish_ok or bearish_ok) or score < ML_THRESHOLD:
+                    print(f"⏸️ {SYMBOL} sin señal clara. ML={score:.2f} | regime={regime} | ia={ia_prob:.2%}")
+                    # Aun sin señal, si hay posición abierta seguimos monitoreando más abajo
+                # -----------------------------------------------------
+
+                # =============== Gestión de posición abierta (PRIMERO) ===============
+                flip_to = None  # 'LONG' o 'SHORT' si procede
                 if state.get("last_side") and state.get("entry_price") is not None:
-                    side = state["last_side"]
+                    side  = state["last_side"]
                     entry = state["entry_price"]
+
+                    # 1) Gestión defensiva: BE + Trailing siempre actualizados
                     apply_breakeven_if_needed(state, side, price, SYMBOL)
                     update_trailing(state, side, price, SYMBOL)
 
-                    do_exit, reason = should_exit_now(state, side, price)
-                    if do_exit:
-                        profit_pct = current_profit_pct(side, entry, price)
+                    # 2) ¿Disparo de salida por trailing/SL o protección BE?
+                    exit_now, reason = should_exit_now(state, side, price)
+
+                    # 3) ¿Reversión inteligente (flip)?
+                    if not exit_now and adx_now >= FLIP_REQUIRE_ADX and ia_prob >= FLIP_MIN_IA:
+                        if side == "LONG" and bearish_ok:
+                            flip_to = "SHORT"
+                            reason  = "Flip: señal contraria fuerte"
+                            exit_now = True
+                        elif side == "SHORT" and bullish_ok:
+                            flip_to = "LONG"
+                            reason  = "Flip: señal contraria fuerte"
+                            exit_now = True
+
+                    # 4) Ejecutar salida si corresponde
+                    if exit_now:
+                        pnl_pct = current_profit_pct(side, entry, price)
                         send_signal(SYMBOL, SIGNAL_CODES[SYMBOL]["EXIT_ALL"])
-                        log_trade(SYMBOL, side, entry, price, profit_pct, reason=reason)
-                        send_telegram_message(
-                            f"🔚 {SYMBOL} EXIT por {reason}\n"
-                            f"{side} @ {entry:.2f} → {price:.2f} | PnL={profit_pct:.2f}%"
-                        )
+                        log_trade(SYMBOL, side, entry, price, pnl_pct, reason=reason)
+                        send_telegram_message(f"🔚 {SYMBOL} EXIT por {reason}\n{side} @ {entry:.2f} → {price:.2f} | PnL={pnl_pct:.2f}%")
+
+                        # Limpiar estado y entrar en cooldown corto
                         state.update({
                             "last_side": None,
                             "entry_price": None,
@@ -1272,124 +1358,69 @@ def main():
                             "highest_price": None,
                             "lowest_price": None,
                             "dynamic_trail_pct": None,
-                            "cooldown_until": time.time() + COOLDOWN_AFTER_EXIT_SEC,
+                            "cooldown_until": time.time() + (FLIP_COOLDOWN_SEC if flip_to else COOLDOWN_AFTER_EXIT_SEC),
                         })
                         save_state(SYMBOL, state)
+
+                        # Si hay flip, intentamos entrada opuesta inmediatamente tras micro-cooldown
+                        if flip_to:
+                            time.sleep(FLIP_COOLDOWN_SEC)
+                            side_flip = flip_to
+                            sl_price = (price - ATR_SL_MULT * atr_fast) if side_flip == "LONG" else (price + ATR_SL_MULT * atr_fast)
+                            code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if side_flip == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
+                            if send_signal(SYMBOL, code):
+                                record_entry(SYMBOL, side_flip, price, sl_price, ema_f, ema_s, ema_long, rsi, atr_fast)
+                                state["last_side"]  = side_flip
+                                state["entry_price"] = price
+                                save_state(SYMBOL, state)
+                                send_telegram_message(f"🔁 {SYMBOL} FLIP → ENTER {side_flip} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}")
+                                print(f"🔁 {SYMBOL} FLIP → ENTER {side_flip} @ {price:.2f} | SL={sl_price:.2f}", flush=True)
+                        # Ya gestionamos salida/flip; pasa al siguiente símbolo
                         continue
 
-                # === Sentimiento e IA ===
-                sentiment = estimate_sentiment_from_1h(df1h)
-                context_bias = float(context.get("sentiment_bias", 0.5))
-                print(
-                    f"⏱️ {now_utc} | {SYMBOL} | P={price:.2f} | RSI={rsi:.1f}/{rsi_5:.1f} | ADX={adx_now:.1f} "
-                    f"| regime={regime} | sentiment={sentiment:.2f} | bias_mem={context_bias:.2f}",
-                    flush=True,
-                )
+                # =============== Si NO hay posición abierta, evaluar ENTRADA ===============
+                state = load_state(SYMBOL)  # refrescar por si se limpió arriba
+                if not state.get("last_side") or state.get("entry_price") is None:
+                    # Requisitos de señal
+                    if not (bullish_ok or bearish_ok) or score < ML_THRESHOLD:
+                        # no hay setup válido; pasar al siguiente símbolo
+                        time.sleep(0.01)
+                        continue
 
-                ia_prob = ia_decision(
-                    ema_f, ema_s, ema_long, rsi, atr_fast,
-                    rsi_slope_now=rsi_slope_now,
-                    atr_stable=atr_stable,
-                    vol_now=vol_now, vol_ma=vol_ma,
-                    ema_fast_ref=ema_f, ema_slow_ref=ema_s,
-                )
-                print(f"🧩 IA → probabilidad de éxito: {ia_prob:.2%}")
-                print(f"🤖 warmed={online_ai.is_warmed} | modelo={'OK' if ia_model else 'None'}")
+                    desired_side = "LONG" if bullish_ok else "SHORT"
+                    now_ts = time.time()
 
-                # === Copiloto IA ===
-                global RSI_LONG_MIN, RSI_LONG_MAX, RSI_SHORT_MIN, RSI_SHORT_MAX, ADX_MIN, RISK_PCT_BASE
-                if ia_prob > 0.75:
-                    RSI_LONG_MIN = max(30, RSI_LONG_MIN - 2)
-                    RSI_LONG_MAX = min(80, RSI_LONG_MAX + 2)
-                    ADX_MIN = max(8, ADX_MIN - 1)
-                elif ia_prob < 0.20:
-                    RSI_LONG_MIN = min(45, RSI_LONG_MIN + 2)
-                    RSI_LONG_MAX = max(60, RSI_LONG_MAX - 2)
-                    ADX_MIN = min(35, ADX_MIN + 2)
+                    # 1) Cooldown general
+                    if state.get("cooldown_until", 0) > now_ts:
+                        print(f"⏸️ {SYMBOL} en cooldown.")
+                        continue
 
-                # === Drawdown y seguridad ===
-                day_limit, week_limit, profit_lock = check_drawdown_limits()
-                # if day_limit or week_limit:
-                #     send_telegram_message(f"⚠️ {SYMBOL} Drawdown límite. Día={day_limit}, Semana={week_limit}.")
-                #     continue
+                    # 2) Anti-duplicado: si por algún motivo el state quedó con last_side igual y entry_price None, limpiamos
+                    if state.get("last_side") == desired_side and state.get("entry_price") is not None:
+                        print(f"⚠️ {SYMBOL}: ya hay posición {desired_side} abierta, no enviar nueva señal.")
+                        continue
 
-                # === Filtros DEMO (relajados para probar) ===
-                if atr_fast > atr_stable * 2.5:
-                    continue
-                if adx_now < 8:
-                    continue
+                    # 3) Enviar entrada
+                    sl_price  = (price - ATR_SL_MULT * atr_fast) if desired_side == "LONG" else (price + ATR_SL_MULT * atr_fast)
+                    enter_code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if desired_side == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
 
-                # === Señales ===
-                ema_cross_up_now = ema_f > ema_s * (1 + EMA_DIFF_MARGIN)
-                ema_cross_dn_now = ema_f < ema_s * (1 - EMA_DIFF_MARGIN)
-                long_align_5m = (ema_f_5 > ema_s_5) and (rsi_slope_5 > 0) and (rsi_5 >= 40)
-                short_align_5m = (ema_f_5 < ema_s_5) and (rsi_slope_5 < 0) and (rsi_5 <= 60)
+                    if send_signal(SYMBOL, enter_code):
+                        record_entry(SYMBOL, desired_side, price, sl_price, ema_f, ema_s, ema_long, rsi, atr_fast)
+                        state["last_side"]   = desired_side
+                        state["entry_price"] = price
+                        save_state(SYMBOL, state)
 
-                bullish_ok = (
-                    ema_cross_up_now
-                    and (RSI_LONG_MIN <= rsi <= RSI_LONG_MAX)
-                    and (rsi_slope_now > 0)
-                    and (price > ema_long)
-                    and (vol_now > vol_ma)
-                    and long_align_5m
-                )
-                bearish_ok = (
-                    ema_cross_dn_now
-                    and (RSI_SHORT_MIN <= rsi <= RSI_SHORT_MAX)
-                    and (rsi_slope_now < 0)
-                    and (price < ema_long)
-                    and (vol_now > vol_ma)
-                    and short_align_5m
-                )
+                        send_telegram_message(
+                            f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}"
+                        )
+                        print(f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}", flush=True)
+                    else:
+                        print(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({desired_side}).", flush=True)
+                        send_telegram_message(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({desired_side}).")
 
-                # === Relaja IA/Sentimiento para DEMO ===
-                if ia_prob < 0.25:
-                    bullish_ok = bearish_ok = False
+                # Si llegamos aquí con posición abierta, el monitoreo continuo de BE/Trailing ya quedó activo arriba
 
-                features = {
-                    "rsi": rsi,
-                    "rsi_slope": rsi_slope_now,
-                    "adx": adx_now,
-                    "ema_trend": ema_f > ema_s,
-                    "vol_rel": (vol_now / max(vol_ma, 1e-9)) - 1.0,
-                    "regime": regime,
-                }
-                score = ml_score(features, ia_prob=ia_prob)
-                if not (bullish_ok or bearish_ok) or score < ML_THRESHOLD:
-                    print(f"⏸️ {SYMBOL} sin señal clara. ML={score:.2f} | regime={regime} | ia={ia_prob:.2%}")
-                    continue
-
-                # === NUEVA ENTRADA (actualizado) ===
-                side = "LONG" if bullish_ok else "SHORT"
-                now_ts = time.time()
-
-                if state.get("cooldown_until", 0) > now_ts:
-                    print(f"⏸️ {SYMBOL} en cooldown.")
-                    continue
-
-                sl_price = (price - ATR_SL_MULT * atr_fast) if side == "LONG" else (price + ATR_SL_MULT * atr_fast)
-                enter_code = SIGNAL_CODES[SYMBOL]["ENTER_LONG"] if side == "LONG" else SIGNAL_CODES[SYMBOL]["ENTER_SHORT"]
-
-                if send_signal(SYMBOL, enter_code):
-                    record_entry(
-                        SYMBOL, side, price, sl_price,
-                        ema_f, ema_s, ema_long, rsi, atr_fast
-                    )
-                    send_telegram_message(
-                        f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | "
-                        f"IA={ia_prob*100:.1f}% | Regime={regime}"
-                    )
-                    print(
-                        f"✅ {SYMBOL} ENTER {side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | "
-                        f"IA={ia_prob*100:.1f}% | Regime={regime}",
-                        flush=True,
-                    )
-                else:
-                    print(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({side}).", flush=True)
-                    send_telegram_message(f"⚠️ {SYMBOL} NO se pudo enviar la señal de entrada ({side}).")
-
-                continue
-
+            # Espera entre ciclos
             time.sleep(POLL_SECONDS)
 
         except Exception as e:
@@ -1398,7 +1429,6 @@ def main():
                 send_telegram_message(f"⚠️ Error repetido de datos ({consecutive_fetch_errors}): {e}")
             print("⚠️ Error general:", e, flush=True)
             time.sleep(15)
-
 
 
 class IPHandler(http.server.SimpleHTTPRequestHandler):
@@ -1445,6 +1475,7 @@ if __name__ == "__main__":
 
     # Inicia el bot principal
     main()
+
 
 
 
