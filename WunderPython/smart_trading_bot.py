@@ -51,20 +51,30 @@ except Exception as e:
 
 
 
-# Inicia IA secundaria
+# ==========================
+# IA OFFLINE (RandomForest)
+# ==========================
+IA_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+os.makedirs(os.path.dirname(IA_MODEL_PATH), exist_ok=True)
 
-# Modelo IA offline (RandomForest)
+# 🔁 Esperar hasta que el modelo exista o máximo 10s
+max_wait = 10
+waited = 0
+while not os.path.exists(IA_MODEL_PATH) and waited < max_wait:
+    print(f"⏳ Esperando modelo IA en {IA_MODEL_PATH}...", flush=True)
+    time.sleep(1)
+    waited += 1
+
 try:
-    IA_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
-    os.makedirs(os.path.dirname(IA_MODEL_PATH), exist_ok=True)
     ia_model = joblib.load(IA_MODEL_PATH)
     print("🧠 Modelo IA cargado correctamente.")
 except Exception as e:
     ia_model = None
     print("⚠️ No se pudo cargar el modelo IA:", e)
 
-
+# ✅ Inicia IA secundaria después de cargar el modelo
 threading.Thread(target=auto_update_ai, daemon=True).start()
+
 
 # Modelo IA on-line (aprendizaje incremental)
 online_ai = OnlineLearner()
@@ -1494,6 +1504,7 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
 
