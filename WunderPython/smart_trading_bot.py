@@ -58,7 +58,7 @@ IA_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
 os.makedirs(os.path.dirname(IA_MODEL_PATH), exist_ok=True)
 
 # 🔁 Esperar hasta que el modelo exista o máximo 10s
-max_wait = 10
+max_wait = 40
 waited = 0
 while not os.path.exists(IA_MODEL_PATH) and waited < max_wait:
     print(f"⏳ Esperando modelo IA en {IA_MODEL_PATH}...", flush=True)
@@ -1504,6 +1504,7 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
 
