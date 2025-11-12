@@ -277,7 +277,7 @@ def ensure_ia_model():
     """Carga el modelo IA y recuerda sus columnas esperadas (feature_names_in_)."""
     global ia_model, OFFLINE_FEATURES
     try:
-        model_path = "AI_MODEL/model_trading.pkl"
+        model_path = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
         if not os.path.exists(model_path):
             print("⚠️ Modelo IA no encontrado; entrenando...")
             subprocess.run(["python", "AI_MODEL/convert_trades.py"], check=True)
@@ -1479,5 +1479,6 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
