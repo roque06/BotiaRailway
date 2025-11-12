@@ -52,7 +52,6 @@ except Exception as e:
 
 
 # Inicia IA secundaria
-threading.Thread(target=auto_update_ai, daemon=True).start()
 
 # Modelo IA offline (RandomForest)
 try:
@@ -63,6 +62,9 @@ try:
 except Exception as e:
     ia_model = None
     print("⚠️ No se pudo cargar el modelo IA:", e)
+
+
+threading.Thread(target=auto_update_ai, daemon=True).start()
 
 # Modelo IA on-line (aprendizaje incremental)
 online_ai = OnlineLearner()
@@ -1492,6 +1494,7 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
 
