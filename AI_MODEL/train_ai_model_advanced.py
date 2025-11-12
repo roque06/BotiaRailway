@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 import joblib
 import os
+import shutil
 
 print("📊 Entrenando modelo IA avanzado...")
 
@@ -71,22 +72,21 @@ print(f"✅ Precisión del modelo avanzado: {acc:.2%}")
 print(classification_report(y_test, y_pred, zero_division=0))
 
 # ============================
-# 7️⃣ GUARDAR MODELO
+# 7️⃣ GUARDAR MODELO LOCAL
 # ============================
 os.makedirs("AI_MODEL", exist_ok=True)
-joblib.dump(model, "AI_MODEL/model_trading.pkl")
-print("💾 Modelo avanzado guardado en: AI_MODEL/model_trading.pkl")
+model_path_local = "AI_MODEL/model_trading.pkl"
+joblib.dump(model, model_path_local)
+print(f"💾 Modelo avanzado guardado en: {model_path_local}")
 
-# Copiar automáticamente el modelo al volumen persistente
+# ============================
+# 8️⃣ COPIAR A /mnt/data (Railway persistente)
+# ============================
 try:
-    src_model = "AI_MODEL/model_trading.pkl"
-    dst_model = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+    base_path = "/mnt/data" if os.path.exists("/mnt/data") else os.getcwd()
+    dst_model = os.path.join(base_path, "AI_MODEL/model_trading.pkl")
     os.makedirs(os.path.dirname(dst_model), exist_ok=True)
-    import shutil
-    shutil.copy2(src_model, dst_model)
+    shutil.copy2(model_path_local, dst_model)
     print(f"💾 Copia sincronizada en {dst_model}", flush=True)
 except Exception as e:
-    print(f"⚠️ No se pudo copiar modelo IA a {dst_model}: {e}", flush=True)
-
-
-
+    print(f"⚠️ No se pudo copiar modelo IA a volumen persistente: {e}", flush=True)
