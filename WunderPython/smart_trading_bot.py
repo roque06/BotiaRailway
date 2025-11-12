@@ -43,7 +43,8 @@ threading.Thread(target=auto_update_ai, daemon=True).start()
 
 # Modelo IA offline (RandomForest)
 try:
-    IA_MODEL_PATH = "AI_MODEL/model_trading.pkl"
+    IA_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+    os.makedirs(os.path.dirname(IA_MODEL_PATH), exist_ok=True)
     ia_model = joblib.load(IA_MODEL_PATH)
     print("🧠 Modelo IA cargado correctamente.")
 except Exception as e:
@@ -180,7 +181,7 @@ def auto_train_ai_model():
     """Ejecuta conversión y entrenamiento IA automáticamente si hay nuevos trades"""
     try:
         log_file = "trades_log.csv"
-        model_file = "AI_MODEL/model_trading.pkl"
+        model_file = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
 
         # Solo reentrena si hay trades nuevos o el modelo no existe
         if os.path.exists(log_file):
@@ -1478,4 +1479,5 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
