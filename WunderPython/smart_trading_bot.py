@@ -1385,6 +1385,7 @@ def main():
 
                     if send_signal(SYMBOL, enter_code):
                         record_entry(SYMBOL, desired_side, price, sl_price, ema_f, ema_s, ema_long, rsi, atr_fast)
+                        state = load_state(SYMBOL)
                         send_telegram_message(f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}")
                         print(f"✅ {SYMBOL} ENTER {desired_side} @ {price:.2f} | SL={sl_price:.2f} | ADX={adx_now:.1f} | IA={ia_prob*100:.1f}% | Regime={regime}", flush=True)
                     else:
@@ -1477,3 +1478,4 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
