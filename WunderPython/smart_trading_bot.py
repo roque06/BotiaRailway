@@ -37,6 +37,19 @@ AI_MODEL_PATH = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
 
 print(f"📁 Base path activo: {BASE_PATH}", flush=True)
 
+# Copia inicial del modelo IA si no existe en /mnt/data
+try:
+    src_model = "/app/AI_MODEL/model_trading.pkl"
+    dst_model = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+    os.makedirs(os.path.dirname(dst_model), exist_ok=True)
+    if not os.path.exists(dst_model) and os.path.exists(src_model):
+        import shutil
+        shutil.copy2(src_model, dst_model)
+        print(f"💾 Copiado modelo IA inicial a {dst_model}", flush=True)
+except Exception as e:
+    print(f"⚠️ No se pudo copiar modelo IA inicial: {e}", flush=True)
+
+
 
 # Inicia IA secundaria
 threading.Thread(target=auto_update_ai, daemon=True).start()
@@ -1479,6 +1492,7 @@ if __name__ == "__main__":
 
     # Iniciar bot principal
     main()
+
 
 
 
