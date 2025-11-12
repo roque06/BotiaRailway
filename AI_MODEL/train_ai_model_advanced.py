@@ -77,3 +77,16 @@ os.makedirs("AI_MODEL", exist_ok=True)
 joblib.dump(model, "AI_MODEL/model_trading.pkl")
 print("💾 Modelo avanzado guardado en: AI_MODEL/model_trading.pkl")
 
+# Copiar automáticamente el modelo al volumen persistente
+try:
+    src_model = "AI_MODEL/model_trading.pkl"
+    dst_model = os.path.join(BASE_PATH, "AI_MODEL/model_trading.pkl")
+    os.makedirs(os.path.dirname(dst_model), exist_ok=True)
+    import shutil
+    shutil.copy2(src_model, dst_model)
+    print(f"💾 Copia sincronizada en {dst_model}", flush=True)
+except Exception as e:
+    print(f"⚠️ No se pudo copiar modelo IA a {dst_model}: {e}", flush=True)
+
+
+
